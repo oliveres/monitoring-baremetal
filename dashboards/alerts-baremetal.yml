@@ -1,0 +1,71 @@
+# Alert rules for bare-metal hosts.
+# Install on the CENTRAL Prometheus (monitoring-grafana/prometheus/rules/),
+# not on the agent - agent mode has rule evaluation disabled.
+
+groups:
+  - name: baremetal-hypervisor
+    interval: 30s
+    rules:
+      - alert: IPMIUnreachable
+        expr: ipmi_up{role="hypervisor"} == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "BMC not responding on {{ $labels.host }}"
+          description: "ipmi_exporter cannot read /dev/ipmi0. The host may still be fine; the BMC or the KCS interface is not."
+
+      # One rule covering every voltage rail, temperature and chassis intrusion.
+      # Thresholding each of the ~30 sensors individually is not worth it.
+      - alert: IPMISensorCritical
+        expr: ipmi_sensor_state{role="hypervisor"} > 1
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Sensor {{ $labels.name }} critical on {{ $labels.host }}"
+
+      - alert: IPMISensorWarning
+        expr: ipmi_sensor_state{role="hypervisor"} == 1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Sensor {{ $labels.name }} in warning state on {{ $labels.host }}"
+
+      # Only fires for fans that are actually populated - absent headers report
+      # no reading and never produce a series.
+      - alert: FanStopped
+        expr: ipmi_fan_speed_rpm{role="hypervisor"} < 500
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.name }} stopped on {{ $labels.host }} ({{ $value | printf \"%.0f\" }} RPM)"
+          description: "BMC low critical threshold on this board is 420 RPM."
+
+      - alert: CPUTempHigh
+        expr: ipmi_temperature_celsius{role="hypervisor", name="CPU Temp"} > 85
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "CPU at {{ $value | printf \"%.0f\" }}C on {{ $labels.host }}"
+
+      - alert: InletTempHigh
+        expr: ipmi_temperature_celsius{role="hypervisor", name="System Temp"} > 45
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Intake air at {{ $value | printf \"%.0f\" }}C on {{ $labels.host }}"
+          description: "Ambient problem rather than a load problem - check the room, not the workload."
+
+      - alert: ChassisIntrusion
+        expr: ipmi_chassis_intrusion_state{role="hypervisor"} > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Chassis opened on {{ $labels.host }}"
+
+      - alert: AgentRemoteWriteBacklog
+        expr: prometheus_remote_storage_samples_pending{role="hypervisor"} > 10000
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Agent backlog on {{ $labels.host }}"
+          description: "Samples are queueing faster than they ship. Check the Caddy endpoint and basic auth."

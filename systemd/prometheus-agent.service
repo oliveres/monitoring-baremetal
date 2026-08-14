@@ -1,0 +1,29 @@
+[Unit]
+Description=Prometheus Agent (bare-metal edge)
+Documentation=https://prometheus.io/docs/prometheus/latest/prometheus_agent/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=prometheus
+Group=prometheus
+ExecStart=/usr/local/bin/prometheus \
+  ${PROM_AGENT_FLAG} \
+  --config.file=/etc/prometheus-baremetal/agent.yml \
+  --storage.agent.path=/var/lib/prometheus-agent \
+  --web.listen-address=127.0.0.1:9090 \
+  --web.enable-lifecycle
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=10
+EnvironmentFile=/etc/prometheus-baremetal/agent.env
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/prometheus-agent
+
+[Install]
+WantedBy=multi-user.target

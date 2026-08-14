@@ -1,0 +1,111 @@
+# Bare-metal Prometheus Agent Configuration
+# Runs natively on the hypervisor (no Docker) and forwards to central via remote write.
+#
+# Differences from monitoring-edge:
+#   - no cAdvisor (hypervisor runs VMs/LXC, not containers)
+#   - node-exporter scraped over localhost, not host.docker.internal
+#   - IPMI scraped from the BMC via local KCS (/dev/ipmi0)
+#   - no write_relabel_configs host override: external_labels already carries it,
+#     and forcing it here would clobber labels on any future remote target.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    host: '${HOSTNAME}'
+    role: 'hypervisor'
+
+scrape_configs:
+  - job_name: 'node-exporter'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:9100']
+        labels:
+          host: '${HOSTNAME}'
+    relabel_configs:
+      - target_label: instance
+        replacement: '${HOSTNAME}'
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: node_uname_info
+        target_label: nodename
+        replacement: '${HOSTNAME}'
+
+  # BMC sensors: temperatures, fan RPM, voltages, chassis intrusion.
+  # 30s is a floor, not a style choice - the AST2600 BMC degrades under
+  # faster SDR polling and starts returning timeouts.
+  - job_name: 'ipmi'
+    scrape_interval: 30s
+    scrape_timeout: 20s
+    static_configs:
+      - targets: ['localhost:9290']
+        labels:
+          host: '${HOSTNAME}'
+    relabel_configs:
+      - target_label: instance
+        replacement: '${HOSTNAME}'
+
+  # Proxmox VE API - guests, storage, cluster quorum.
+  # Enabled when PVE_API_HOST is set; the exporter itself listens on
+  # PVE_EXPORTER_TARGET and is queried multi-target style.
+  - job_name: 'pve'
+    scrape_interval: 30s
+    metrics_path: /pve
+    params:
+      module: [default]
+    static_configs:
+      - targets: ['${PVE_API_HOST}']
+        labels:
+          host: '${HOSTNAME}'
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '^$'
+        action: drop
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: '${PVE_EXPORTER_TARGET}'
+
+  # SMART data for the boot SSD and any NVMe (enabled when set)
+  - job_name: 'smartctl'
+    scrape_interval: 60s
+    static_configs:
+      - targets: ['${SMARTCTL_EXPORTER_TARGET}']
+        labels:
+          host: '${HOSTNAME}'
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '^$'
+        action: drop
+      - target_label: instance
+        replacement: '${HOSTNAME}'
+
+  # Self-monitoring
+  - job_name: 'prometheus'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          host: '${HOSTNAME}'
+          instance: '${HOSTNAME}-agent'
+
+remote_write:
+  - url: '${CENTRAL_PROMETHEUS_URL}'
+    basic_auth:
+      username: '${BASIC_AUTH_USER}'
+      password: '${BASIC_AUTH_PASSWORD}'
+
+    queue_config:
+      capacity: 10000
+      max_shards: 10
+      min_shards: 1
+      max_samples_per_send: 5000
+      batch_send_deadline: 5s
+      min_backoff: 30ms
+      max_backoff: 5s
+
+    metadata_config:
+      send: true
+      send_interval: 1m

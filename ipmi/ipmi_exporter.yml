@@ -1,0 +1,26 @@
+# ipmi_exporter - local mode (no target param => reads /dev/ipmi0 via FreeIPMI)
+#
+# Collectors deliberately trimmed:
+#   dcmi  - omitted. Supermicro X12SDV in a CSE-505 chassis has no PMBus PSU,
+#           so `ipmitool dcmi power reading` returns 0W and activation fails
+#           with 0xd5. Leaving it in only lengthens every scrape.
+#   sm-lan-mode, sel - omitted; add back if you want SEL event counts.
+
+modules:
+  default:
+    collectors:
+      - ipmi
+      - chassis
+      - bmc
+
+    # Sensors that report "No Reading" on this board. They surface as NaN and
+    # clutter dashboards. IDs come from: ipmi-sensors --list
+    #   8Ch M2_SSD1 Temp (NVMe temp comes from smartctl instead)
+    #   43h FAN3, 44h FAN4, 48h FANB (headers not populated in this chassis)
+    exclude_sensor_ids:
+      - 140
+      - 67
+      - 68
+      - 72
+
+    timeout: 10000

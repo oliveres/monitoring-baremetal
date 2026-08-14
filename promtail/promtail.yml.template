@@ -1,0 +1,41 @@
+# Promtail for a bare-metal hypervisor.
+# Reads systemd-journald instead of /var/lib/docker/containers, so PVE task
+# logs, corosync, kernel, and ZFS events all land in the same Loki as the
+# Docker hosts.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /var/lib/promtail/positions.yaml
+
+clients:
+  - url: '${CENTRAL_LOKI_URL}'
+    basic_auth:
+      username: '${BASIC_AUTH_USER}'
+      password: '${BASIC_AUTH_PASSWORD}'
+    backoff_config:
+      min_period: 500ms
+      max_period: 5m
+      max_retries: 10
+
+scrape_configs:
+  - job_name: journal
+    journal:
+      json: false
+      max_age: 12h
+      path: /var/log/journal
+      labels:
+        job: systemd-journal
+        host: '${HOSTNAME}'
+        role: hypervisor
+    relabel_configs:
+      - source_labels: ['__journal__systemd_unit']
+        target_label: unit
+      - source_labels: ['__journal_syslog_identifier']
+        target_label: syslog_identifier
+      - source_labels: ['__journal_priority_keyword']
+        target_label: level
+      - source_labels: ['__journal__hostname']
+        target_label: nodename

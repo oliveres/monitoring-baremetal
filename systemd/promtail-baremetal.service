@@ -1,0 +1,24 @@
+[Unit]
+Description=Promtail (journald -> central Loki)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# systemd-journal group membership is enough to read the journal; root not needed.
+User=promtail
+Group=promtail
+SupplementaryGroups=systemd-journal
+ExecStart=/usr/local/bin/promtail \
+  -config.file=/etc/prometheus-baremetal/promtail.yml
+Restart=on-failure
+RestartSec=10
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/promtail
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,24 @@
+[Unit]
+Description=Prometheus IPMI Exporter (local KCS)
+Documentation=https://github.com/prometheus-community/ipmi_exporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Runs as root: /dev/ipmi0 is 0600 root:root and FreeIPMI needs raw access.
+# A sudoers wrapper is possible (see upstream README) but on a hypervisor the
+# extra moving parts are worse than the privilege.
+User=root
+ExecStart=/usr/local/bin/ipmi_exporter \
+  --config.file=/etc/prometheus-baremetal/ipmi_exporter.yml \
+  --web.listen-address=127.0.0.1:9290
+Restart=on-failure
+RestartSec=10
+
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
