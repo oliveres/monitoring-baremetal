@@ -98,3 +98,21 @@ including voltages and chassis intrusion; thresholding each is not worth the mai
 - optional jobs use the same `regex: '^$'` / `action: drop` convention as `monitoring-edge`,
   so unset env vars silently disable their scrape job
 - promtail reads journald instead of `/var/lib/docker/containers`
+
+## Known issues
+
+Found on 23 Oct 2026 while reviewing this repo; not fixed yet, to be investigated
+later. They affect any host this agent is deployed on.
+
+1. **Sensor alerts miss most sensors.** The rules in `dashboards/alerts-baremetal.yml`
+   only watch `ipmi_sensor_state`. `ipmi_exporter` reports temperatures, fans,
+   voltages, currents and power in their own metrics (`ipmi_temperature_state`,
+   `ipmi_fan_speed_state`, `ipmi_voltage_state`, …), so those rules never fire for
+   them. The note "Alert on `ipmi_sensor_state`" above is wrong for the same reason.
+2. **Chassis intrusion alert can never fire.** It queries
+   `ipmi_chassis_intrusion_state`, which `ipmi_exporter` does not export. Intrusion
+   arrives as a generic sensor (`ipmi_sensor_state`, type `Physical Security`).
+3. **node_exporter and promtail listen on all interfaces.** The Debian
+   `prometheus-node-exporter` package defaults to `:9100` and promtail sets no
+   `http_listen_address` (`:9080`). The other services bind to `127.0.0.1`; these
+   two should too, especially on a host with a public IP.
